@@ -73,6 +73,11 @@ setInterval(() => {
     log(
         `[MONITOR11111] Memory heap: ${heapUsedMB} MB | RSS: ${rssMB} MB | CPU load(1m): ${load}`
     );
+
+    // Also write to stderr so this shows up in PM2's ERROR log (~/.pm2/logs/*-error.log)
+    logError(
+        `[MONITOR-ERR] Memory heap: ${heapUsedMB} MB | RSS: ${rssMB} MB | CPU load(1m): ${load}`
+    );
 }, LOOP_MS);
 
 // ---------------------------------------------------------------------------
