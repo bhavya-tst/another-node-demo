@@ -17,19 +17,43 @@ const log = (...args) => console.log(stamp(), ...args);
 const logError = (...args) => console.error(stamp(), ...args);
 
 // ---------------------------------------------------------------------------
+// ACTIVE REQUEST COUNTER
+// Incremented when a request arrives, decremented when its response finishes.
+// ---------------------------------------------------------------------------
+let activeRequests = 0;
+
+// How long the `/` route holds the connection open (ms)
+const SLOW_MS = Number(process.env.SLOW_MS) || 20000;
+
+// ---------------------------------------------------------------------------
 // 1) REQUEST LOGGER  (middleware)
 // Runs on EVERY request so you see logs in the terminal each time a page is hit
 // ---------------------------------------------------------------------------
 app.use((req, res, next) => {
-    log(`${req.method} ${req.url}`);
+    activeRequests++;
+    log(`--> ${req.method} ${req.url} | active: ${activeRequests}`);
+
+    // 'finish' fires when the response is fully sent; 'close' if client aborts
+    res.on('close', () => {
+        activeRequests--;
+        log(`<-- ${req.method} ${req.url} | active: ${activeRequests}`);
+    });
+
     next(); // pass control to the next handler
 });
 
 // ---------------------------------------------------------------------------
 // ROUTES
 // ---------------------------------------------------------------------------
+// Deliberately SLOW route: holds the request open for SLOW_MS so you can watch
+// the active request count climb in the logs while several curls run at once.
 app.get('/', (req, res) => {
-    res.send(`Hello World from ${APP_NAME}`);
+    log(`[SLOW] holding request for ${SLOW_MS} ms | active: ${activeRequests}`);
+    logError(`[SLOW-ERR] holding request for ${SLOW_MS} ms | active: ${activeRequests}`);
+
+    setTimeout(() => {
+        res.send(`Hello World from ${APP_NAME} after ${SLOW_MS} ms`);
+    }, SLOW_MS);
 });
 
 // A route that ON PURPOSE throws an error so you can see error handling work.
@@ -42,6 +66,7 @@ app.get('/stats', (req, res) => {
     const mem = process.memoryUsage();
     res.json({
         app: APP_NAME,
+        activeRequests, // how many requests are in flight right now
         uptimeSeconds: Math.round(process.uptime()),
         memoryMB: {
             heapUsed: (mem.heapUsed / 1024 / 1024).toFixed(2),
@@ -71,12 +96,12 @@ setInterval(() => {
     const load = os.loadavg()[0].toFixed(2); // 1-minute CPU load average
 
     log(
-        `[MONITOR11111] Memory heap: ${heapUsedMB} MB | RSS: ${rssMB} MB | CPU load(1m): ${load}`
+        `[MONITOR11111] Active: ${activeRequests} | Memory heap: ${heapUsedMB} MB | RSS: ${rssMB} MB | CPU load(1m): ${load}`
     );
 
     // Also write to stderr so this shows up in PM2's ERROR log (~/.pm2/logs/*-error.log)
     logError(
-        `[MONITOR-ERR] Memory heap: ${heapUsedMB} MB | RSS: ${rssMB} MB | CPU load(1m): ${load}`
+        `[MONITOR-ERR] Active: ${activeRequests} | Memory heap: ${heapUsedMB} MB | RSS: ${rssMB} MB | CPU load(1m): ${load}`
     );
 }, LOOP_MS);
 
