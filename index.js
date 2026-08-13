@@ -26,6 +26,39 @@ let activeRequests = 0;
 const SLOW_MS = Number(process.env.SLOW_MS) || 20000;
 
 // ---------------------------------------------------------------------------
+// LOG-CAPACITY TEST DATA
+// Global, always-climbing line counter + a pool of realistic issue messages.
+// Used by the monitor loop to emit a burst of 30-50 lines per tick so you can
+// stress-test how much log volume the out-log / rotation can handle.
+// ---------------------------------------------------------------------------
+let logLineCount = 0; // never resets for the whole process life
+
+const SEVERITIES = ['INFO', 'WARN', 'ERROR', 'DEBUG', 'FATAL'];
+
+const ISSUE_TEMPLATES = [
+    'DB connection pool exhausted',
+    'Redis timeout after 5000ms',
+    'HTTP 502 from upstream payment-svc',
+    'Slow query 1240ms on users table',
+    'GC pause 320ms',
+    'Event loop lag 210ms',
+    'Memory heap at 87% of limit',
+    'Retry 3/5 for webhook delivery',
+    'Circuit breaker OPEN for inventory-svc',
+    'Deadlock detected, transaction rolled back',
+    'Rate limit exceeded for client 10.0.4.22',
+    'Cache miss storm on product catalog',
+    'Kafka consumer lag 4200 messages',
+    'TLS handshake failed with auth-svc',
+    'Disk usage at 91% on /var/log',
+    'Stale connection reset by peer',
+    'Request timeout waiting for lock',
+    'Unexpected null in session payload',
+    'Queue depth 850 exceeds threshold',
+    'Upstream DNS resolution slow (900ms)',
+];
+
+// ---------------------------------------------------------------------------
 // 1) REQUEST LOGGER  (middleware)
 // Runs on EVERY request so you see logs in the terminal each time a page is hit
 // ---------------------------------------------------------------------------
@@ -103,6 +136,20 @@ setInterval(() => {
     logError(
         `[MONITOR-ERR] Active: ${activeRequests} | Memory heap: ${heapUsedMB} MB | RSS: ${rssMB} MB | CPU load(1m): ${load}`
     );
+
+    // -----------------------------------------------------------------------
+    // LOG-CAPACITY BURST — emit a random 30-50 issue-style lines this tick.
+    // Each line carries the global, always-climbing #N counter so you can
+    // test how much log volume the out-log / rotation handles.
+    // -----------------------------------------------------------------------
+    const burst = 30 + Math.floor(Math.random() * 21); // 30..50 inclusive
+    for (let i = 0; i < burst; i++) {
+        logLineCount++;
+        const sev = SEVERITIES[Math.floor(Math.random() * SEVERITIES.length)];
+        const msg = ISSUE_TEMPLATES[Math.floor(Math.random() * ISSUE_TEMPLATES.length)];
+        log(`#${logLineCount} [${sev}] ${msg} | active:${activeRequests} heap:${heapUsedMB}MB`);
+    }
+    log(`[BURST] emitted ${burst} lines this tick | total lines: ${logLineCount}`);
 }, LOOP_MS);
 
 // ---------------------------------------------------------------------------
